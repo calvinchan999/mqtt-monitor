@@ -1,0 +1,40 @@
+# Cloud deployment configuration
+version: '3.8'
+
+services:
+  mqtt-monitor:
+    build: .
+    container_name: mqtt-monitor
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+    volumes:
+      # Persist database on cloud storage
+      - mqtt_data:/app/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:3000/api/stats || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    # Optional: Resource limits for cloud deployment
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: '0.5'
+        reservations:
+          memory: 256M
+          cpus: '0.25'
+
+volumes:
+  mqtt_data:
+    driver: local
+
+# Optional: Custom network for multiple services
+networks:
+  default:
+    name: mqtt-monitor-network

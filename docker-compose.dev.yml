@@ -1,0 +1,17 @@
+version: '3.8'
+
+services:
+  mqtt-monitor:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      - NODE_ENV=development
+    volumes:
+      # Mount source code for development
+      - .:/app
+      - /app/node_modules
+    command: npm run dev
+    ports:
+      - "3000:3000"
+      - "9229:9229"  # Node.js debugging port

@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MQTT Monitor Tool</title>
+    <link rel="stylesheet" href="css/style.css">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+</head>
+<body>
+    <div class="container">
+        <header class="header">
+            <h1><i class="fas fa-satellite-dish"></i> MQTT Monitor Tool</h1>
+            <div class="status-indicator">
+                <span id="wsStatus" class="status offline">Offline</span>
+            </div>
+        </header>
+
+        <div class="main-content">
+            <div class="content-left">
+                <!-- Connection Management Section -->
+                <div class="section">
+                    <div class="section-header">
+                        <h2><i class="fas fa-plug"></i> MQTT Connection Management</h2>
+                        <button id="addConnectionBtn" class="btn btn-primary">
+                            <i class="fas fa-plus"></i> Add Connection
+                        </button>
+                    </div>
+                
+                <div class="connection-form" id="connectionForm" style="display: none;">
+                    <form id="connectionFormElement">
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="connectionName">Connection Name</label>
+                                <input type="text" id="connectionName" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="connectionHost">Host Address</label>
+                                <input type="text" id="connectionHost" placeholder="localhost or wss://broker.example.com:61619" required>
+                                <small>For AWS MQ: Use full WSS URL (e.g., wss://b-xxx.mq.region.amazonaws.com:61619)</small>
+                            </div>
+                            <div class="form-group">
+                                <label for="connectionPort">Port</label>
+                                <input type="number" id="connectionPort" value="1883" placeholder="1883, 8883, or leave empty for WebSocket URLs">
+                                <small>Leave empty if using full WebSocket URL in host field</small>
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="connectionUsername">Username</label>
+                                <input type="text" id="connectionUsername">
+                            </div>
+                            <div class="form-group">
+                                <label for="connectionPassword">Password</label>
+                                <input type="password" id="connectionPassword">
+                            </div>
+                            <div class="form-group">
+                                <label for="connectionClientId">Client ID</label>
+                                <input type="text" id="connectionClientId" placeholder="Auto-generated">
+                            </div>
+                        </div>
+                        <div class="form-actions">
+                            <button type="submit" class="btn btn-success">Save Connection</button>
+                            <button type="button" id="cancelConnectionBtn" class="btn btn-secondary">Cancel</button>
+                        </div>
+                    </form>
+                </div>
+
+                <div class="connections-list" id="connectionsList">
+                    <!-- Connection list will be dynamically generated here -->
+                </div>
+            </div>
+
+            <!-- Topic Management Section -->
+            <div class="section" id="topicsSection">
+                <div class="section-header">
+                    <h2><i class="fas fa-list"></i> Topic Management</h2>
+                    <button id="addTopicBtn" class="btn btn-primary" disabled>
+                        <i class="fas fa-plus"></i> Add Topic
+                    </button>
+                </div>
+
+                <div class="topic-form" id="topicForm" style="display: none;">
+                    <form id="topicFormElement">
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="topicConnection">Select Connection</label>
+                                <select id="topicConnection" required>
+                                    <option value="">Please select a connection</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label for="topicName">Topic Name</label>
+                                <input type="text" id="topicName" placeholder="sensor/temperature" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="topicQos">QoS Level</label>
+                                <select id="topicQos">
+                                    <option value="0">0 - At most once</option>
+                                    <option value="1">1 - At least once</option>
+                                    <option value="2">2 - Exactly once</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="form-actions">
+                            <button type="submit" class="btn btn-success">Save Topic</button>
+                            <button type="button" id="cancelTopicBtn" class="btn btn-secondary">Cancel</button>
+                        </div>
+                    </form>
+                </div>
+
+                <div class="topics-list" id="topicsList">
+                    <!-- Topic list will be dynamically generated here -->
+                </div>
+                </div>
+            </div>
+            
+            <div class="content-right">
+                <!-- Message Monitoring Section -->
+                <div class="section monitoring-section">
+                <div class="section-header">
+                    <h2><i class="fas fa-comments"></i> Real-time Message Monitoring</h2>
+                    <div class="message-controls">
+                        <button id="pauseMonitoringBtn" class="btn btn-secondary">
+                            <i class="fas fa-pause"></i> Pause Monitoring
+                        </button>
+                        <button id="autoScrollBtn" class="btn btn-success">
+                            <i class="fas fa-arrow-down"></i> Auto Scroll
+                        </button>
+                        <button id="clearMessagesBtn" class="btn btn-warning">
+                            <i class="fas fa-trash"></i> Clear Messages
+                        </button>
+                        <button id="exportMessagesBtn" class="btn btn-info">
+                            <i class="fas fa-download"></i> Export Messages
+                        </button>
+                    </div>
+                </div>
+
+                <div class="message-filters">
+                    <div class="form-group">
+                        <label for="filterConnection">Filter by Connection</label>
+                        <select id="filterConnection">
+                            <option value="">All Connections</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="filterTopic">Filter by Topic</label>
+                        <input type="text" id="filterTopic" placeholder="Enter topic name">
+                    </div>
+                    <div class="form-group">
+                        <span class="info-text">📡 Messages displayed in real-time only (not stored)</span>
+                    </div>
+                </div>
+
+                <div class="topic-tags" id="topicTags">
+                    <div class="topic-tags-header">
+                        <span>Active Topics:</span>
+                        <button id="clearTopicFiltersBtn" class="btn btn-sm btn-secondary">Clear Filters</button>
+                    </div>
+                    <div class="topic-tags-container" id="topicTagsContainer">
+                        <!-- Topic tags will be dynamically generated -->
+                    </div>
+                </div>
+
+                <div class="messages-container">
+                    <div class="messages-list" id="messagesList">
+                        <!-- Message list will be dynamically generated here -->
+                    </div>
+                </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Message Detail Modal -->
+    <div id="messageModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Message Details</h3>
+                <span class="close">&times;</span>
+            </div>
+            <div class="modal-body">
+                <div class="message-detail">
+                    <div class="detail-row">
+                        <label>Topic:</label>
+                        <span id="modalTopic"></span>
+                    </div>
+                    <div class="detail-row">
+                        <label>Connection:</label>
+                        <span id="modalConnection"></span>
+                    </div>
+                    <div class="detail-row">
+                        <label>Time:</label>
+                        <span id="modalTimestamp"></span>
+                    </div>
+                    <div class="detail-row">
+                        <label>QoS:</label>
+                        <span id="modalQos"></span>
+                    </div>
+                    <div class="detail-row">
+                        <label>Retained:</label>
+                        <span id="modalRetained"></span>
+                    </div>
+                    <div class="detail-row">
+                        <label>Message Content:</label>
+                        <pre id="modalMessage"></pre>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/app.js"></script>
+</body>
+</html>
