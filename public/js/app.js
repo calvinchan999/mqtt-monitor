@@ -7,6 +7,7 @@ class MQTTMonitorApp {
         this.currentConnectionId = null;
         this.monitoringPaused = false;
         this.activeTopicFilter = null;
+        this.selectedTopicForExport = null;
         this.topicMessageCounts = new Map();
         this.autoScroll = true;
         this.lastMessageCount = 0;
@@ -782,6 +783,7 @@ class MQTTMonitorApp {
         
         console.log(`📊 Total messages in array: ${this.messages.length}`);
         this.updateTopicTags();
+        this.updateExportButtonText();
         this.displayMessages(this.messages);
     }
 
@@ -857,15 +859,28 @@ class MQTTMonitorApp {
             
             const count = group.count;
             const tag = document.createElement('div');
-            tag.className = `topic-tag ${this.activeTopicFilter === group.topic ? 'active' : ''}`;
+            const isActive = this.activeTopicFilter === group.topic;
+            const isSelected = this.selectedTopicForExport === group.topic;
+            tag.className = `topic-tag ${isActive ? 'active' : ''} ${isSelected ? 'selected' : ''}`;
             tag.innerHTML = `
                 <div class="topic-name">${group.topic}</div>
-                <div class="connection-name">📡 ${connectionName}</div>
-                <span class="message-count">${count}</span>
+                <div class="connection-row">
+                    <div class="connection-name">📡 ${connectionName}</div>
+                    <span class="message-count">${count}</span>
+                </div>
             `;
+            
+            // Single click for filtering
             tag.addEventListener('click', () => {
                 this.filterByTopic(group.topic);
             });
+            
+            // Double click for export selection
+            tag.addEventListener('dblclick', (e) => {
+                e.stopPropagation();
+                this.selectTopicForExport(group.topic);
+            });
+            
             container.appendChild(tag);
         });
     }
@@ -885,6 +900,32 @@ class MQTTMonitorApp {
         document.getElementById('filterTopic').value = '';
         this.updateTopicTags();
         this.filterMessages();
+    }
+
+    selectTopicForExport(topic) {
+        if (this.selectedTopicForExport === topic) {
+            // Deselect if already selected
+            this.selectedTopicForExport = null;
+            this.showNotification('Topic deselected for export', 'info');
+        } else {
+            // Select new topic
+            this.selectedTopicForExport = topic;
+            this.showNotification(`Topic "${topic}" selected for export`, 'success');
+        }
+        this.updateTopicTags();
+        this.updateExportButtonText();
+    }
+
+    updateExportButtonText() {
+        const exportBtn = document.getElementById('exportMessagesBtn');
+        if (exportBtn) {
+            if (this.selectedTopicForExport) {
+                const messageCount = this.messages.filter(m => m.topic === this.selectedTopicForExport).length;
+                exportBtn.innerHTML = `<i class="fas fa-download"></i> Export Topic (${messageCount})`;
+            } else {
+                exportBtn.innerHTML = `<i class="fas fa-download"></i> Export Messages`;
+            }
+        }
     }
 
     showConnectionDetail(connectionId) {
@@ -1006,7 +1047,96 @@ class MQTTMonitorApp {
     }
 
     exportMessages() {
-        alert('Message export not available - messages are only displayed in real-time and not stored.');
+        let messagesToExport = this.messages;
+        let filename = 'mqtt_messages';
+        
+        // Filter by selected topic if one is selected
+        if (this.selectedTopicForExport) {
+            messagesToExport = this.messages.filter(m => m.topic === this.selectedTopicForExport);
+            filename = `mqtt_messages_${this.selectedTopicForExport.replace(/[/\\?%*:|"<>]/g, '_')}`;
+        }
+        
+        if (messagesToExport.length === 0) {
+            this.showNotification('No messages to export', 'warning');
+            return;
+        }
+        
+        // Ask user for export format
+        const exportFormat = prompt('Export format:\n1. CSV\n2. JSON\n\nEnter 1 or 2:', '1');
+        
+        if (exportFormat === '1') {
+            this.exportToCSV(messagesToExport, filename);
+        } else if (exportFormat === '2') {
+            this.exportToJSON(messagesToExport, filename);
+        } else if (exportFormat !== null) {
+            this.showNotification('Invalid format selected', 'error');
+        }
+    }
+
+    exportToCSV(messages, filename) {
+        try {
+            // CSV headers
+            const headers = ['Timestamp', 'Topic', 'Connection ID', 'Message', 'QoS', 'Retained'];
+            
+            // Convert messages to CSV format
+            const csvContent = [
+                headers.join(','),
+                ...messages.map(message => [
+                    `"${new Date(message.timestamp).toISOString()}"`,
+                    `"${message.topic}"`,
+                    message.connection_id,
+                    `"${message.message.replace(/"/g, '""')}"`, // Escape quotes in message content
+                    message.qos,
+                    message.retained ? 'true' : 'false'
+                ].join(','))
+            ].join('\n');
+            
+            this.downloadFile(csvContent, `${filename}.csv`, 'text/csv');
+            this.showNotification(`Exported ${messages.length} messages to CSV`, 'success');
+        } catch (error) {
+            console.error('Error exporting to CSV:', error);
+            this.showNotification('Error exporting to CSV: ' + error.message, 'error');
+        }
+    }
+
+    exportToJSON(messages, filename) {
+        try {
+            // Create export object with metadata
+            const exportData = {
+                exportedAt: new Date().toISOString(),
+                totalMessages: messages.length,
+                selectedTopic: this.selectedTopicForExport,
+                messages: messages.map(message => ({
+                    id: message.id,
+                    timestamp: message.timestamp,
+                    topic: message.topic,
+                    connection_id: message.connection_id,
+                    message: message.message,
+                    qos: message.qos,
+                    retained: message.retained
+                }))
+            };
+            
+            const jsonContent = JSON.stringify(exportData, null, 2);
+            this.downloadFile(jsonContent, `${filename}.json`, 'application/json');
+            this.showNotification(`Exported ${messages.length} messages to JSON`, 'success');
+        } catch (error) {
+            console.error('Error exporting to JSON:', error);
+            this.showNotification('Error exporting to JSON: ' + error.message, 'error');
+        }
+    }
+
+    downloadFile(content, filename, mimeType) {
+        const blob = new Blob([content], { type: mimeType });
+        const url = URL.createObjectURL(blob);
+        
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
     }
 
     updateConnectionSelects() {

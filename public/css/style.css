@@ -416,10 +416,14 @@ body {
 
 .topic-tags-container {
     display: flex;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
     gap: 8px;
     width: 100%;
     box-sizing: border-box;
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding-bottom: 8px;
+    scrollbar-width: thin;
 }
 
 .topic-tag {
@@ -436,9 +440,10 @@ body {
     flex-direction: column;
     align-items: flex-start;
     gap: 3px;
-    min-width: fit-content;
-    word-break: break-word;
-    white-space: normal;
+    min-width: 150px;
+    max-width: 300px;
+    width: auto;
+    white-space: nowrap;
     flex-shrink: 0;
 }
 
@@ -452,15 +457,36 @@ body {
     border-color: #27ae60;
 }
 
+.topic-tag.selected {
+    background: linear-gradient(135deg, #f39c12, #e67e22);
+    border-color: #e67e22;
+    box-shadow: 0 0 0 2px rgba(243, 156, 18, 0.3);
+}
+
+.topic-tag.selected .topic-name::after {
+    content: " 📤";
+    font-size: 0.7rem;
+}
+
 .topic-tag .topic-name {
     font-weight: 600;
     font-size: 0.8rem;
+    white-space: nowrap;
 }
 
 .topic-tag .connection-name {
     font-size: 0.7rem;
     opacity: 0.8;
     font-style: italic;
+    white-space: nowrap;
+}
+
+.topic-tag .connection-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    width: 100%;
+    gap: 8px;
 }
 
 .topic-tag .message-count {
@@ -468,8 +494,7 @@ body {
     padding: 2px 6px;
     border-radius: 10px;
     font-size: 0.7rem;
-    align-self: flex-end;
-    margin-top: 2px;
+    flex-shrink: 0;
 }
 
 .message-filters {
@@ -938,6 +963,7 @@ body {
 /* 滾動條樣式 */
 ::-webkit-scrollbar {
     width: 8px;
+    height: 8px;
 }
 
 ::-webkit-scrollbar-track {
@@ -952,6 +978,25 @@ body {
 
 ::-webkit-scrollbar-thumb:hover {
     background: #42a5f5;
+}
+
+/* Specific scrollbar styling for topic tags container */
+.topic-tags-container::-webkit-scrollbar {
+    height: 6px;
+}
+
+.topic-tags-container::-webkit-scrollbar-track {
+    background: rgba(40, 40, 60, 0.3);
+    border-radius: 3px;
+}
+
+.topic-tags-container::-webkit-scrollbar-thumb {
+    background: rgba(100, 181, 246, 0.6);
+    border-radius: 3px;
+}
+
+.topic-tags-container::-webkit-scrollbar-thumb:hover {
+    background: rgba(100, 181, 246, 0.8);
 }
 
 /* 動畫效果 */
