@@ -15,6 +15,7 @@ class MQTTMonitorApp {
         this.reconnectAttempts = 0;
         this.maxReconnectAttempts = 5;
         this.reconnectDelay = 5000;
+        this.dialogOpen = false; // Track if messages dialog is open
         this.init();
     }
 
@@ -173,6 +174,39 @@ class MQTTMonitorApp {
         }
     }
 
+    updateConnectionStatusInUI(connectionId, status) {
+        const statusElement = document.getElementById(`status-${connectionId}`);
+        if (statusElement) {
+            const statusSpan = statusElement.querySelector('.status');
+            if (statusSpan) {
+                // Remove all status classes
+                statusSpan.classList.remove('connected', 'disconnected', 'offline', 'error');
+                
+                // Add the new status class and update text
+                switch (status) {
+                    case 'connected':
+                        statusSpan.classList.add('connected');
+                        statusSpan.textContent = 'Connected';
+                        break;
+                    case 'disconnected':
+                    case 'offline':
+                        statusSpan.classList.add('offline');
+                        statusSpan.textContent = 'Offline';
+                        break;
+                    case 'error':
+                        statusSpan.classList.add('error');
+                        statusSpan.textContent = 'Error';
+                        break;
+                    default:
+                        statusSpan.classList.add('offline');
+                        statusSpan.textContent = 'Unknown';
+                }
+                
+                console.log(`🔄 Updated connection ${connectionId} status to: ${status}`);
+            }
+        }
+    }
+
     handleWebSocketMessage(data) {
         console.log('📨 WebSocket message received:', data.type, data);
         
@@ -311,6 +345,13 @@ class MQTTMonitorApp {
             this.exportMessages();
         });
 
+        const openMessagesDialogBtn = document.getElementById('openMessagesDialogBtn');
+        if (openMessagesDialogBtn) {
+            openMessagesDialogBtn.addEventListener('click', () => {
+                this.openMessagesDialog();
+            });
+        }
+
         const clearTopicFiltersBtn = document.getElementById('clearTopicFiltersBtn');
         if (clearTopicFiltersBtn) {
             clearTopicFiltersBtn.addEventListener('click', () => {
@@ -331,6 +372,9 @@ class MQTTMonitorApp {
                 this.closeModal();
             }
         });
+
+        // Messages dialog event listeners
+        this.setupMessagesDialogEventListeners();
     }
 
     async loadConnections() {
@@ -370,6 +414,22 @@ class MQTTMonitorApp {
         const addTopicBtn = document.getElementById('addTopicBtn');
         if (addTopicBtn) {
             addTopicBtn.disabled = this.connections.length === 0;
+        }
+    }
+
+    updateConnectionSelects() {
+        const topicConnectionSelect = document.getElementById('topicConnection');
+        if (topicConnectionSelect) {
+            // Clear existing options except the first one
+            topicConnectionSelect.innerHTML = '<option value="">Please select a connection</option>';
+            
+            // Add all connections as options
+            this.connections.forEach(connection => {
+                const option = document.createElement('option');
+                option.value = connection.id;
+                option.textContent = connection.name;
+                topicConnectionSelect.appendChild(option);
+            });
         }
     }
 
@@ -856,6 +916,12 @@ class MQTTMonitorApp {
         this.updateTopicTags();
         this.updateExportButtonText();
         this.displayMessages(this.messages);
+        
+        // Update dialog if open
+        if (this.dialogOpen) {
+            this.updateDialogTopicTags();
+            this.updateDialogMessages();
+        }
     }
 
     async toggleMonitoring() {
@@ -973,6 +1039,80 @@ class MQTTMonitorApp {
         this.filterMessages();
     }
 
+    filterMessages() {
+        let filteredMessages = this.messages;
+        if (this.activeTopicFilter) {
+            filteredMessages = filteredMessages.filter(m => m.topic === this.activeTopicFilter);
+        }
+        this.displayMessages(filteredMessages);
+        
+        // Update dialog if open
+        if (this.dialogOpen) {
+            this.updateDialogMessages();
+        }
+    }
+
+    clearMessages() {
+        this.messages = [];
+        this.topicMessageCounts.clear();
+        this.displayMessages(this.messages);
+        this.updateTopicTags();
+        this.updateExportButtonText();
+        
+        // Update dialog if open
+        if (this.dialogOpen) {
+            this.updateDialogTopicTags();
+            this.updateDialogMessages();
+        }
+        
+        this.showNotification('Messages cleared', 'success');
+        console.log('🗑️ All messages cleared');
+    }
+
+    exportMessages() {
+        let messagesToExport;
+        let filename;
+        
+        if (this.selectedTopicForExport) {
+            // Export messages for selected topic only
+            messagesToExport = this.messages.filter(m => m.topic === this.selectedTopicForExport);
+            filename = `mqtt_messages_${this.selectedTopicForExport.replace(/[^a-zA-Z0-9]/g, '_')}_${new Date().toISOString().slice(0, 19).replace(/[:.]/g, '-')}.json`;
+        } else {
+            // Export all messages
+            messagesToExport = this.messages;
+            filename = `mqtt_messages_all_${new Date().toISOString().slice(0, 19).replace(/[:.]/g, '-')}.json`;
+        }
+        
+        if (messagesToExport.length === 0) {
+            this.showNotification('No messages to export', 'warning');
+            return;
+        }
+        
+        // Create export data
+        const exportData = {
+            exportedAt: new Date().toISOString(),
+            totalMessages: messagesToExport.length,
+            topicFilter: this.selectedTopicForExport || 'all',
+            messages: messagesToExport
+        };
+        
+        // Create downloadable JSON file
+        const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        
+        // Create download link and trigger download
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        
+        this.showNotification(`Exported ${messagesToExport.length} messages`, 'success');
+        console.log(`📤 Exported ${messagesToExport.length} messages to ${filename}`);
+    }
+
     selectTopicForExport(topic) {
         if (this.selectedTopicForExport === topic) {
             // Deselect if already selected
@@ -1088,142 +1228,209 @@ class MQTTMonitorApp {
         }
     }
 
-    filterMessages() {
-        let filteredMessages = this.messages;
-        
-        // Apply topic tag filter only
-        if (this.activeTopicFilter) {
-            filteredMessages = filteredMessages.filter(m => m.topic === this.activeTopicFilter);
+    setupMessagesDialogEventListeners() {
+        // Close dialog
+        const closeDialog = document.querySelector('.close-dialog');
+        if (closeDialog) {
+            closeDialog.addEventListener('click', () => {
+                this.closeMessagesDialog();
+            });
         }
-        
-        this.displayMessages(filteredMessages);
-    }
 
-    clearMessages() {
-        this.messages = [];
-        this.displayMessages(this.messages);
-    }
-
-    exportMessages() {
-        let messagesToExport = this.messages;
-        let filename = 'mqtt_messages';
-        
-        // Filter by selected topic if one is selected
-        if (this.selectedTopicForExport) {
-            messagesToExport = this.messages.filter(m => m.topic === this.selectedTopicForExport);
-            filename = `mqtt_messages_${this.selectedTopicForExport.replace(/[/\\?%*:|"<>]/g, '_')}`;
+        // Dialog controls
+        const dialogPauseBtn = document.getElementById('dialogPauseBtn');
+        if (dialogPauseBtn) {
+            dialogPauseBtn.addEventListener('click', () => {
+                this.toggleMonitoring();
+                this.updateDialogControls();
+            });
         }
-        
-        if (messagesToExport.length === 0) {
-            this.showNotification('No messages to export', 'warning');
-            return;
-        }
-        
-        // Ask user for export format
-        const exportFormat = prompt('Export format:\n1. CSV\n2. JSON\n\nEnter 1 or 2:', '1');
-        
-        if (exportFormat === '1') {
-            this.exportToCSV(messagesToExport, filename);
-        } else if (exportFormat === '2') {
-            this.exportToJSON(messagesToExport, filename);
-        } else if (exportFormat !== null) {
-            this.showNotification('Invalid format selected', 'error');
-        }
-    }
 
-    exportToCSV(messages, filename) {
-        try {
-            // CSV headers
-            const headers = ['Timestamp', 'Topic', 'Connection ID', 'Message', 'QoS', 'Retained'];
-            
-            // Convert messages to CSV format
-            const csvContent = [
-                headers.join(','),
-                ...messages.map(message => [
-                    `"${new Date(message.timestamp).toISOString()}"`,
-                    `"${message.topic}"`,
-                    message.connection_id,
-                    `"${message.message.replace(/"/g, '""')}"`, // Escape quotes in message content
-                    message.qos,
-                    message.retained ? 'true' : 'false'
-                ].join(','))
-            ].join('\n');
-            
-            this.downloadFile(csvContent, `${filename}.csv`, 'text/csv');
-            this.showNotification(`Exported ${messages.length} messages to CSV`, 'success');
-        } catch (error) {
-            console.error('Error exporting to CSV:', error);
-            this.showNotification('Error exporting to CSV: ' + error.message, 'error');
+        const dialogAutoScrollBtn = document.getElementById('dialogAutoScrollBtn');
+        if (dialogAutoScrollBtn) {
+            dialogAutoScrollBtn.addEventListener('click', () => {
+                this.toggleAutoScroll();
+                this.updateDialogControls();
+            });
         }
-    }
 
-    exportToJSON(messages, filename) {
-        try {
-            // Create export object with metadata
-            const exportData = {
-                exportedAt: new Date().toISOString(),
-                totalMessages: messages.length,
-                selectedTopic: this.selectedTopicForExport,
-                messages: messages.map(message => ({
-                    id: message.id,
-                    timestamp: message.timestamp,
-                    topic: message.topic,
-                    connection_id: message.connection_id,
-                    message: message.message,
-                    qos: message.qos,
-                    retained: message.retained
-                }))
-            };
-            
-            const jsonContent = JSON.stringify(exportData, null, 2);
-            this.downloadFile(jsonContent, `${filename}.json`, 'application/json');
-            this.showNotification(`Exported ${messages.length} messages to JSON`, 'success');
-        } catch (error) {
-            console.error('Error exporting to JSON:', error);
-            this.showNotification('Error exporting to JSON: ' + error.message, 'error');
+        const dialogClearBtn = document.getElementById('dialogClearBtn');
+        if (dialogClearBtn) {
+            dialogClearBtn.addEventListener('click', () => {
+                this.clearMessages();
+            });
         }
-    }
 
-    downloadFile(content, filename, mimeType) {
-        const blob = new Blob([content], { type: mimeType });
-        const url = URL.createObjectURL(blob);
-        
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = filename;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-    }
+        const dialogExportBtn = document.getElementById('dialogExportBtn');
+        if (dialogExportBtn) {
+            dialogExportBtn.addEventListener('click', () => {
+                this.exportMessages();
+            });
+        }
 
-    updateConnectionSelects() {
-        const selects = ['topicConnection'];
-        selects.forEach(selectId => {
-            const select = document.getElementById(selectId);
-            if (select) {
-                select.innerHTML = '<option value="">Please select a connection</option>';
-                
-                this.connections.forEach(connection => {
-                    const option = document.createElement('option');
-                    option.value = connection.id;
-                    option.textContent = connection.name;
-                    select.appendChild(option);
-                });
+        const dialogClearFiltersBtn = document.getElementById('dialogClearFiltersBtn');
+        if (dialogClearFiltersBtn) {
+            dialogClearFiltersBtn.addEventListener('click', () => {
+                this.clearTopicFilters();
+            });
+        }
+
+        // Close dialog when clicking outside
+        window.addEventListener('click', (e) => {
+            const messagesDialog = document.getElementById('messagesDialog');
+            if (e.target === messagesDialog) {
+                this.closeMessagesDialog();
+            }
+        });
+
+        // Close dialog with Escape key
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && this.dialogOpen) {
+                this.closeMessagesDialog();
             }
         });
     }
 
-    updateConnectionStatusInUI(connectionId, status) {
-        const statusElement = document.getElementById(`status-${connectionId}`);
-        if (statusElement) {
-            const statusSpan = statusElement.querySelector('.status');
-            statusSpan.className = `status ${status}`;
-            statusSpan.textContent = status === 'connected' ? 'Online' : 'Offline';
+    openMessagesDialog() {
+        const dialog = document.getElementById('messagesDialog');
+        if (dialog) {
+            dialog.style.display = 'block';
+            this.dialogOpen = true;
+            
+            // Update dialog content
+            this.updateDialogTopicTags();
+            this.updateDialogMessages();
+            this.updateDialogControls();
+            
+            console.log('📱 Messages dialog opened');
+            this.showNotification('Messages dialog opened', 'info');
         }
     }
 
-    toggleConnectionForm() {
+    closeMessagesDialog() {
+        const dialog = document.getElementById('messagesDialog');
+        if (dialog) {
+            dialog.style.display = 'none';
+            this.dialogOpen = false;
+            console.log('📱 Messages dialog closed');
+        }
+    }
+
+    updateDialogControls() {
+        // Update pause button
+        const dialogPauseBtn = document.getElementById('dialogPauseBtn');
+        if (dialogPauseBtn) {
+            if (this.monitoringPaused) {
+                dialogPauseBtn.innerHTML = '<i class="fas fa-play"></i> Resume';
+                dialogPauseBtn.className = 'btn btn-sm btn-success';
+            } else {
+                dialogPauseBtn.innerHTML = '<i class="fas fa-pause"></i> Pause';
+                dialogPauseBtn.className = 'btn btn-sm btn-secondary';
+            }
+        }
+
+        // Update auto scroll button
+        const dialogAutoScrollBtn = document.getElementById('dialogAutoScrollBtn');
+        if (dialogAutoScrollBtn) {
+            if (this.autoScroll) {
+                dialogAutoScrollBtn.innerHTML = '<i class="fas fa-arrow-down"></i> Auto Scroll';
+                dialogAutoScrollBtn.className = 'btn btn-sm btn-success';
+            } else {
+                dialogAutoScrollBtn.innerHTML = '<i class="fas fa-hand-paper"></i> Manual Scroll';
+                dialogAutoScrollBtn.className = 'btn btn-sm btn-secondary';
+            }
+        }
+    }
+
+    updateDialogTopicTags() {
+        const container = document.getElementById('dialogTopicTagsContainer');
+        if (!container) return;
+
+        // Reuse the same logic as the main topic tags
+        const topicGroups = {};
+        this.messages.forEach(message => {
+            const key = `${message.topic}|${message.connection_id}`;
+            if (!topicGroups[key]) {
+                topicGroups[key] = {
+                    topic: message.topic,
+                    connection_id: message.connection_id,
+                    count: 0
+                };
+            }
+            topicGroups[key].count++;
+        });
+
+        container.innerHTML = '';
+
+        Object.values(topicGroups).forEach(group => {
+            const connection = this.connections.find(c => c.id === group.connection_id);
+            const connectionName = connection ? connection.name : `Connection ${group.connection_id}`;
+            
+            const count = group.count;
+            const tag = document.createElement('div');
+            const isActive = this.activeTopicFilter === group.topic;
+            const isSelected = this.selectedTopicForExport === group.topic;
+            tag.className = `topic-tag ${isActive ? 'active' : ''} ${isSelected ? 'selected' : ''}`;
+            tag.innerHTML = `
+                <div class="topic-name">${group.topic}</div>
+                <div class="connection-row">
+                    <div class="connection-name">📡 ${connectionName}</div>
+                    <span class="message-count">${count}</span>
+                </div>
+            `;
+            
+            // Single click for filtering
+            tag.addEventListener('click', () => {
+                this.filterByTopic(group.topic);
+                this.updateDialogTopicTags(); // Update dialog tags
+            });
+            
+            // Double click for export selection
+            tag.addEventListener('dblclick', (e) => {
+                e.stopPropagation();
+                this.selectTopicForExport(group.topic);
+                this.updateDialogTopicTags(); // Update dialog tags
+            });
+            
+            container.appendChild(tag);
+        });
+    }
+
+    updateDialogMessages() {
+        const container = document.getElementById('dialogMessagesList');
+        const countElement = document.getElementById('dialogMessageCount');
+        
+        if (!container) return;
+
+        // Apply the same filtering as main messages
+        let filteredMessages = this.messages;
+        if (this.activeTopicFilter) {
+            filteredMessages = filteredMessages.filter(m => m.topic === this.activeTopicFilter);
+        }
+
+        // Update count
+        if (countElement) {
+            countElement.textContent = `(${filteredMessages.length})`;
+        }
+
+        // Clear and rebuild message list
+        container.innerHTML = '';
+        
+        // Display messages (oldest to newest, like main view)
+        filteredMessages.slice().reverse().forEach(message => {
+            const messageElement = this.createMessageElement(message);
+            container.appendChild(messageElement);
+        });
+
+        // Auto-scroll to bottom if enabled
+        if (this.autoScroll) {
+            setTimeout(() => {
+                container.scrollTop = container.scrollHeight;
+            }, 100);
+        }
+    }
+
+    async toggleConnectionForm() {
         const form = document.getElementById('connectionForm');
         if (form) {
             const isHidden = form.style.display === 'none' || form.style.display === '';
@@ -1234,7 +1441,7 @@ class MQTTMonitorApp {
         }
     }
 
-    toggleTopicForm() {
+    async toggleTopicForm() {
         const form = document.getElementById('topicForm');
         if (form) {
             const isHidden = form.style.display === 'none' || form.style.display === '';

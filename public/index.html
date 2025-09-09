@@ -133,6 +133,9 @@
                         <button id="exportMessagesBtn" class="btn btn-info">
                             <i class="fas fa-download"></i> Export Messages
                         </button>
+                        <button id="openMessagesDialogBtn" class="btn btn-primary">
+                            <i class="fas fa-external-link-alt"></i> Open in Dialog
+                        </button>
                     </div>
                 </div>
 
@@ -189,6 +192,54 @@
                     <div class="detail-row">
                         <label>Message Content:</label>
                         <pre id="modalMessage"></pre>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Messages Dialog Modal -->
+    <div id="messagesDialog" class="modal messages-dialog-modal">
+        <div class="modal-content messages-dialog-content">
+            <div class="modal-header">
+                <h3><i class="fas fa-comments"></i> Message Monitor</h3>
+                <div class="modal-header-controls">
+                    <button id="dialogPauseBtn" class="btn btn-sm btn-secondary">
+                        <i class="fas fa-pause"></i> Pause
+                    </button>
+                    <button id="dialogAutoScrollBtn" class="btn btn-sm btn-success">
+                        <i class="fas fa-arrow-down"></i> Auto Scroll
+                    </button>
+                    <button id="dialogClearBtn" class="btn btn-sm btn-warning">
+                        <i class="fas fa-trash"></i> Clear
+                    </button>
+                    <span class="close-dialog">&times;</span>
+                </div>
+            </div>
+            <div class="modal-body messages-dialog-body">
+                <!-- Active Topics Section -->
+                <div class="dialog-topic-tags">
+                    <div class="dialog-topic-tags-header">
+                        <span><i class="fas fa-tags"></i> Active Topics:</span>
+                        <button id="dialogClearFiltersBtn" class="btn btn-sm btn-secondary">Clear Filters</button>
+                    </div>
+                    <div class="dialog-topic-tags-container" id="dialogTopicTagsContainer">
+                        <!-- Topic tags will be dynamically generated -->
+                    </div>
+                </div>
+                
+                <!-- Messages Section -->
+                <div class="dialog-messages-section">
+                    <div class="dialog-messages-header">
+                        <h4><i class="fas fa-list"></i> Messages <span id="dialogMessageCount">(0)</span></h4>
+                        <button id="dialogExportBtn" class="btn btn-sm btn-info">
+                            <i class="fas fa-download"></i> Export
+                        </button>
+                    </div>
+                    <div class="dialog-messages-container">
+                        <div class="dialog-messages-list" id="dialogMessagesList">
+                            <!-- Message list will be dynamically generated here -->
+                        </div>
                     </div>
                 </div>
             </div>
