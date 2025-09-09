@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>MQTT Monitor Tool</title>
     <link rel="stylesheet" href="css/style.css">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
@@ -136,21 +136,6 @@
                     </div>
                 </div>
 
-                <div class="message-filters">
-                    <div class="form-group">
-                        <label for="filterConnection">Filter by Connection</label>
-                        <select id="filterConnection">
-                            <option value="">All Connections</option>
-                        </select>
-                    </div>
-                    <div class="form-group">
-                        <label for="filterTopic">Filter by Topic</label>
-                        <input type="text" id="filterTopic" placeholder="Enter topic name">
-                    </div>
-                    <div class="form-group">
-                        <span class="info-text">📡 Messages displayed in real-time only (not stored)</span>
-                    </div>
-                </div>
 
                 <div class="topic-tags" id="topicTags">
                     <div class="topic-tags-header">

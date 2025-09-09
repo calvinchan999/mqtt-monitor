@@ -19,6 +19,7 @@ class MQTTMonitorApp {
         this.setupEventListeners();
         this.loadConnections();
         this.initializeMessages();
+        this.setupResponsiveHandlers();
     }
 
     // Smart API call function that works with both file:// and http://
@@ -833,6 +834,7 @@ class MQTTMonitorApp {
         }
     }
 
+
     updateTopicTags() {
         const container = document.getElementById('topicTagsContainer');
         if (!container) return;
@@ -897,7 +899,6 @@ class MQTTMonitorApp {
 
     clearTopicFilters() {
         this.activeTopicFilter = null;
-        document.getElementById('filterTopic').value = '';
         this.updateTopicTags();
         this.filterMessages();
     }
@@ -1018,22 +1019,9 @@ class MQTTMonitorApp {
     }
 
     filterMessages() {
-        const connectionId = document.getElementById('filterConnection').value;
-        const topicFilter = document.getElementById('filterTopic').value.toLowerCase();
-        
         let filteredMessages = this.messages;
         
-        if (connectionId) {
-            filteredMessages = filteredMessages.filter(m => m.connection_id == connectionId);
-        }
-        
-        if (topicFilter) {
-            filteredMessages = filteredMessages.filter(m => 
-                m.topic.toLowerCase().includes(topicFilter)
-            );
-        }
-        
-        // Apply topic tag filter
+        // Apply topic tag filter only
         if (this.activeTopicFilter) {
             filteredMessages = filteredMessages.filter(m => m.topic === this.activeTopicFilter);
         }
@@ -1140,17 +1128,19 @@ class MQTTMonitorApp {
     }
 
     updateConnectionSelects() {
-        const selects = ['topicConnection', 'filterConnection'];
+        const selects = ['topicConnection'];
         selects.forEach(selectId => {
             const select = document.getElementById(selectId);
-            select.innerHTML = selectId === 'filterConnection' ? '<option value="">All</option>' : '<option value="">Please select a connection</option>';
-            
-            this.connections.forEach(connection => {
-                const option = document.createElement('option');
-                option.value = connection.id;
-                option.textContent = connection.name;
-                select.appendChild(option);
-            });
+            if (select) {
+                select.innerHTML = '<option value="">Please select a connection</option>';
+                
+                this.connections.forEach(connection => {
+                    const option = document.createElement('option');
+                    option.value = connection.id;
+                    option.textContent = connection.name;
+                    select.appendChild(option);
+                });
+            }
         });
     }
 
@@ -1195,6 +1185,87 @@ class MQTTMonitorApp {
 
     closeModal() {
         document.getElementById('messageModal').style.display = 'none';
+    }
+
+    setupResponsiveHandlers() {
+        // Handle window resize events
+        let resizeTimeout;
+        window.addEventListener('resize', () => {
+            clearTimeout(resizeTimeout);
+            resizeTimeout = setTimeout(() => {
+                this.handleResize();
+            }, 250);
+        });
+
+        // Handle orientation change on mobile devices
+        window.addEventListener('orientationchange', () => {
+            setTimeout(() => {
+                this.handleResize();
+            }, 500);
+        });
+    }
+
+    handleResize() {
+        // Adjust message container height based on screen size
+        const messagesContainer = document.querySelector('.messages-container');
+        if (messagesContainer) {
+            const viewportHeight = window.innerHeight;
+            const isMobile = window.innerWidth <= 768;
+            const isSmallMobile = window.innerWidth <= 480;
+            
+            if (isSmallMobile) {
+                messagesContainer.style.maxHeight = '40vh';
+                messagesContainer.style.minHeight = '200px';
+            } else if (isMobile) {
+                messagesContainer.style.maxHeight = '50vh';
+                messagesContainer.style.minHeight = '250px';
+            } else if (viewportHeight < 800) {
+                messagesContainer.style.maxHeight = '60vh';
+                messagesContainer.style.minHeight = '300px';
+            } else {
+                messagesContainer.style.maxHeight = 'calc(100vh - 320px)';
+                messagesContainer.style.minHeight = '200px';
+            }
+        }
+
+        // Adjust button layouts for smaller screens
+        this.adjustButtonLayouts();
+        
+        // Recalculate message display if needed
+        if (this.messages.length > 0) {
+            this.displayMessages(this.messages);
+        }
+    }
+
+    adjustButtonLayouts() {
+        const messageControls = document.querySelector('.message-controls');
+        if (messageControls) {
+            const isMobile = window.innerWidth <= 768;
+            if (isMobile) {
+                messageControls.style.flexWrap = 'wrap';
+                messageControls.style.justifyContent = 'center';
+                messageControls.style.gap = '6px';
+            } else {
+                messageControls.style.flexWrap = 'nowrap';
+                messageControls.style.justifyContent = 'flex-start';
+                messageControls.style.gap = '8px';
+            }
+        }
+
+        // Adjust connection and topic action buttons
+        const actionButtons = document.querySelectorAll('.connection-actions, .topic-actions');
+        actionButtons.forEach(actions => {
+            const isMobile = window.innerWidth <= 768;
+            if (isMobile) {
+                actions.style.flexWrap = 'wrap';
+                actions.style.justifyContent = 'center';
+                actions.style.gap = '6px';
+            } else {
+                actions.style.flexWrap = 'nowrap';
+                actions.style.justifyContent = 'flex-end';
+                actions.style.gap = '8px';
+            }
+        });
     }
 }
 
