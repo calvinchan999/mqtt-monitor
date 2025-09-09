@@ -1,6 +1,7 @@
 class MQTTMonitorApp {
     constructor() {
         this.ws = null;
+        this.wsClientId = null; // Track WebSocket client ID
         this.connections = [];
         this.topics = [];
         this.messages = [];
@@ -11,6 +12,9 @@ class MQTTMonitorApp {
         this.topicMessageCounts = new Map();
         this.autoScroll = true;
         this.lastMessageCount = 0;
+        this.reconnectAttempts = 0;
+        this.maxReconnectAttempts = 5;
+        this.reconnectDelay = 5000;
         this.init();
     }
 
@@ -20,6 +24,7 @@ class MQTTMonitorApp {
         this.loadConnections();
         this.initializeMessages();
         this.setupResponsiveHandlers();
+        this.setupPageUnloadHandlers(); // Add page unload handling
     }
 
     // Smart API call function that works with both file:// and http://
@@ -90,6 +95,17 @@ class MQTTMonitorApp {
             this.ws.onopen = () => {
                 console.log('WebSocket connected successfully');
                 this.updateConnectionStatus('connected');
+                this.reconnectAttempts = 0; // Reset reconnect attempts on successful connection
+                
+                // Try to restore previous client ID if available
+                const storedClientId = localStorage.getItem('wsClientId');
+                if (storedClientId) {
+                    console.log(`🔄 Attempting to restore WebSocket client ID: ${storedClientId}`);
+                    this.ws.send(JSON.stringify({
+                        type: 'register',
+                        wsClientId: storedClientId
+                    }));
+                }
             };
             
             this.ws.onmessage = (event) => {
@@ -104,11 +120,20 @@ class MQTTMonitorApp {
             this.ws.onclose = (event) => {
                 console.log('WebSocket disconnected:', event.code, event.reason);
                 this.updateConnectionStatus('disconnected');
-                // Try to reconnect
-                setTimeout(() => {
-                    console.log('Attempting to reconnect WebSocket...');
-                    this.setupWebSocket();
-                }, 5000);
+                
+                // Attempt to reconnect with exponential backoff
+                if (this.reconnectAttempts < this.maxReconnectAttempts) {
+                    this.reconnectAttempts++;
+                    const delay = this.reconnectDelay * Math.pow(2, this.reconnectAttempts - 1);
+                    console.log(`Attempting to reconnect WebSocket (${this.reconnectAttempts}/${this.maxReconnectAttempts}) in ${delay}ms...`);
+                    
+                    setTimeout(() => {
+                        this.setupWebSocket();
+                    }, delay);
+                } else {
+                    console.error('Max reconnection attempts reached. Please refresh the page.');
+                    this.showNotification('Connection lost. Please refresh the page.', 'error');
+                }
             };
             
             this.ws.onerror = (error) => {
@@ -118,11 +143,16 @@ class MQTTMonitorApp {
         } catch (error) {
             console.error('Failed to create WebSocket connection:', error);
             this.updateConnectionStatus('error');
-            // Try to reconnect
-            setTimeout(() => {
-                console.log('Retrying WebSocket connection...');
-                this.setupWebSocket();
-            }, 5000);
+            
+            // Retry connection after delay
+            if (this.reconnectAttempts < this.maxReconnectAttempts) {
+                this.reconnectAttempts++;
+                const delay = this.reconnectDelay;
+                setTimeout(() => {
+                    console.log('Retrying WebSocket connection...');
+                    this.setupWebSocket();
+                }, delay);
+            }
         }
     }
 
@@ -147,6 +177,22 @@ class MQTTMonitorApp {
         console.log('📨 WebSocket message received:', data.type, data);
         
         switch (data.type) {
+            case 'connectionStatus':
+                if (data.wsClientId && !this.wsClientId) {
+                    this.wsClientId = data.wsClientId;
+                    console.log(`🆔 WebSocket client ID assigned: ${this.wsClientId}`);
+                    
+                    // Store in localStorage for reconnection
+                    localStorage.setItem('wsClientId', this.wsClientId);
+                }
+                
+                if (data.connectionId) {
+                    console.log('🔗 Connection status update:', data.connectionId, data.status);
+                    this.updateConnectionStatusInUI(data.connectionId, data.status);
+                } else {
+                    console.log('🌐 WebSocket status update:', data.status);
+                }
+                break;
             case 'message':
                 const messageData = data.data;
                 console.log('📨 Adding new MQTT message to UI:', messageData);
@@ -160,13 +206,23 @@ class MQTTMonitorApp {
                 
                 this.addMessage(messageData);
                 break;
-            case 'connectionStatus':
-                console.log('🔗 Connection status update:', data.connectionId, data.status);
-                this.updateConnectionStatusInUI(data.connectionId, data.status);
-                break;
             case 'messages':
                 console.log('📨 Displaying messages batch:', data.data.length, 'messages');
                 this.displayMessages(data.data);
+                break;
+            case 'ping':
+                // Respond to server heartbeat
+                if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+                    this.ws.send(JSON.stringify({ 
+                        type: 'pong', 
+                        timestamp: Date.now() 
+                    }));
+                    console.log('💓 Responded to server heartbeat');
+                }
+                break;
+            case 'pong':
+                // Server responded to our ping
+                console.log('💓 Server heartbeat response received');
                 break;
         }
     }
@@ -202,7 +258,7 @@ class MQTTMonitorApp {
             console.error('Connection form element not found');
         }
 
-        // 主題管理
+        // Topic management
         const addTopicBtn = document.getElementById('addTopicBtn');
         if (addTopicBtn) {
             addTopicBtn.addEventListener('click', () => {
@@ -232,7 +288,7 @@ class MQTTMonitorApp {
             console.error('Topic form element not found');
         }
 
-        // 消息管理
+        // Message management
         const pauseMonitoringBtn = document.getElementById('pauseMonitoringBtn');
         if (pauseMonitoringBtn) {
             pauseMonitoringBtn.addEventListener('click', () => {
@@ -264,7 +320,7 @@ class MQTTMonitorApp {
 
         // Message limit control removed - messages are real-time only
 
-        // 模態框
+        // Modal dialogs
         document.querySelector('.close').addEventListener('click', () => {
             this.closeModal();
         });
@@ -336,7 +392,7 @@ class MQTTMonitorApp {
             <div class="connection-info">
                 <h3>${connection.name}</h3>
                 <p><i class="fas fa-server"></i> ${connectionDisplay}</p>
-                <p><i class="fas fa-user"></i> ${connection.username || '無用戶名'}</p>
+                <p><i class="fas fa-user"></i> ${connection.username || 'No username'}</p>
             </div>
             <div class="connection-actions">
                 <button class="btn btn-sm btn-info" onclick="app.showConnectionDetail(${connection.id})">
@@ -417,23 +473,32 @@ class MQTTMonitorApp {
 
     async connectMQTT(connectionId) {
         try {
+            const requestBody = { connectionId };
+            
+            // Include WebSocket client ID if available
+            if (this.wsClientId) {
+                requestBody.wsClientId = this.wsClientId;
+                console.log(`🆔 Connecting MQTT with WebSocket client ID: ${this.wsClientId}`);
+            }
+            
             const response = await this.apiCall('/api/connect', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ connectionId })
+                body: JSON.stringify(requestBody)
             });
 
             if (response.ok) {
                 this.currentConnectionId = connectionId;
                 this.loadTopics(connectionId);
                 this.initializeMessages();
+                this.showNotification('MQTT connection established', 'success');
             } else {
                 const error = await response.json();
-                alert('Failed to connect: ' + error.error);
+                this.showNotification('Failed to connect: ' + error.error, 'error');
             }
         } catch (error) {
             console.error('Error connecting to MQTT:', error);
-            alert('Failed to connect: ' + error.message);
+            this.showNotification('Failed to connect: ' + error.message, 'error');
         }
     }
 
@@ -447,9 +512,14 @@ class MQTTMonitorApp {
 
             if (response.ok) {
                 this.updateConnectionStatusInUI(connectionId, 'disconnected');
+                this.showNotification('MQTT connection disconnected', 'success');
+            } else {
+                const error = await response.json();
+                this.showNotification('Failed to disconnect: ' + error.error, 'error');
             }
         } catch (error) {
             console.error('Error disconnecting from MQTT:', error);
+            this.showNotification('Failed to disconnect: ' + error.message, 'error');
         }
     }
 
@@ -571,7 +641,7 @@ class MQTTMonitorApp {
                     <i class="fas ${toggleIcon}"></i> ${toggleText}
                 </button>
                 <button class="btn btn-sm btn-danger" onclick="app.deleteTopic(${topic.id})">
-                    <i class="fas fa-trash"></i> 刪除
+                    <i class="fas fa-trash"></i> Delete
                 </button>
             </div>
         `;
@@ -1264,6 +1334,63 @@ class MQTTMonitorApp {
                 actions.style.flexWrap = 'nowrap';
                 actions.style.justifyContent = 'flex-end';
                 actions.style.gap = '8px';
+            }
+        });
+    }
+
+    setupPageUnloadHandlers() {
+        // Handle page unload/refresh/close events
+        const handlePageUnload = (event) => {
+            console.log('🚪 Page unloading, cleaning up connections...');
+            
+            // Send disconnect signal for all active MQTT connections if WebSocket is still open
+            if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+                try {
+                    // Send a cleanup message to server
+                    this.ws.send(JSON.stringify({
+                        type: 'cleanup',
+                        wsClientId: this.wsClientId
+                    }));
+                    
+                    // Small delay to allow message to be sent
+                    const start = Date.now();
+                    while (Date.now() - start < 100) {
+                        // Busy wait for a short time
+                    }
+                } catch (error) {
+                    console.error('Error sending cleanup message:', error);
+                }
+            }
+            
+            // Clear stored client ID
+            localStorage.removeItem('wsClientId');
+        };
+
+        // Handle different page unload scenarios
+        window.addEventListener('beforeunload', handlePageUnload);
+        window.addEventListener('unload', handlePageUnload);
+        
+        // Handle browser tab/window close
+        window.addEventListener('pagehide', (event) => {
+            if (event.persisted) {
+                console.log('🔄 Page cached, maintaining connections');
+            } else {
+                handlePageUnload(event);
+            }
+        });
+        
+        // Handle visibility changes (tab switch, minimize)
+        document.addEventListener('visibilitychange', () => {
+            if (document.hidden) {
+                console.log('👁️ Page hidden (tab switched or minimized)');
+                // Don't disconnect on visibility change, only on actual page unload
+            } else {
+                console.log('👁️ Page visible again');
+                // Ensure WebSocket connection is still alive
+                if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+                    console.log('🔄 Reconnecting WebSocket after visibility change');
+                    this.setupWebSocket();
+                }
             }
         });
     }

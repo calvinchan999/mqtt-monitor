@@ -1,4 +1,4 @@
-/* 全局樣式 */
+/* Global Styles */
 * {
     margin: 0;
     padding: 0;
@@ -18,7 +18,7 @@ body {
     padding: 20px;
 }
 
-/* 標題區域 */
+/* Header Area */
 .header {
     background: rgba(30, 30, 50, 0.95);
     backdrop-filter: blur(10px);
@@ -80,7 +80,7 @@ body {
     color: white;
 }
 
-/* 主要內容區域 */
+/* Main Content Area */
 .main-content {
     display: grid;
     grid-template-columns: 1fr 1.3fr;
@@ -148,7 +148,7 @@ body {
     color: #64b5f6;
 }
 
-/* 按鈕樣式 */
+/* Button Styles */
 .btn {
     padding: 10px 16px;
     border: none;
@@ -219,7 +219,7 @@ body {
     box-shadow: none !important;
 }
 
-/* 表單樣式 */
+/* Form Styles */
 .connection-form,
 .topic-form {
     background: rgba(40, 40, 60, 0.8);
@@ -294,7 +294,7 @@ body {
     align-items: center;
 }
 
-/* 列表樣式 */
+/* List Styles */
 .connections-list,
 .topics-list {
     display: grid;

@@ -13,13 +13,19 @@ class MQTTMonitor {
     this.server = http.createServer(this.app);
     this.wss = new WebSocket.Server({ server: this.server });
     this.db = new Database();
-    this.mqttClients = new Map(); // 存储多个MQTT连接
+    this.mqttClients = new Map(); // Store multiple MQTT connections
+    this.wsClients = new Map(); // Track WebSocket clients and their associated MQTT connections
+    this.heartbeatInterval = null; // Heartbeat interval for WebSocket connections
     this.setupMiddleware();
     this.setupRoutes();
     this.setupWebSocket();
+    this.startHeartbeat();
     
     // No message storage or cleanup needed - messages are only displayed in real-time
     console.log('💡 MQTT messages are displayed in real-time only (not stored in database)');
+    
+    // Setup graceful shutdown
+    this.setupGracefulShutdown();
   }
 
   setupMiddleware() {
@@ -34,7 +40,7 @@ class MQTTMonitor {
   }
 
   setupRoutes() {
-    // 获取所有MQTT连接
+    // Get all MQTT connections
     this.app.get('/api/connections', async (req, res) => {
       try {
         const connections = await this.db.getConnections();
@@ -44,7 +50,7 @@ class MQTTMonitor {
       }
     });
 
-    // 添加MQTT连接
+    // Add MQTT connection
     this.app.post('/api/connections', async (req, res) => {
       try {
         const connection = await this.db.addConnection(req.body);
@@ -54,7 +60,7 @@ class MQTTMonitor {
       }
     });
 
-    // 获取指定连接的主题
+    // Get topics for specified connection
     this.app.get('/api/connections/:id/topics', async (req, res) => {
       try {
         const topics = await this.db.getTopics(req.params.id);
@@ -64,7 +70,7 @@ class MQTTMonitor {
       }
     });
 
-    // 添加主题
+    // Add topic
     this.app.post('/api/topics', async (req, res) => {
       try {
         const topic = await this.db.addTopic(req.body);
@@ -76,10 +82,10 @@ class MQTTMonitor {
 
     // Messages are no longer stored - only real-time display via WebSocket
 
-    // 连接MQTT
+    // Connect MQTT
     this.app.post('/api/connect', async (req, res) => {
       try {
-        const { connectionId } = req.body;
+        const { connectionId, wsClientId } = req.body;
         const connections = await this.db.getConnections();
         const connection = connections.find(c => c.id == connectionId);
         
@@ -87,14 +93,14 @@ class MQTTMonitor {
           return res.status(404).json({ error: 'Connection not found' });
         }
 
-        await this.connectMQTT(connection);
+        await this.connectMQTT(connection, wsClientId);
         res.json({ success: true, message: 'Connected to MQTT broker' });
       } catch (error) {
         res.status(500).json({ error: error.message });
       }
     });
 
-    // 断开MQTT连接
+    // Disconnect MQTT connection
     this.app.post('/api/disconnect', async (req, res) => {
       try {
         const { connectionId } = req.body;
@@ -105,7 +111,7 @@ class MQTTMonitor {
       }
     });
 
-    // 暂停/恢复消息监听
+    // Pause/resume message monitoring
     this.app.post('/api/pause-monitoring', async (req, res) => {
       try {
         const { connectionId, paused } = req.body;
@@ -123,7 +129,7 @@ class MQTTMonitor {
       }
     });
 
-    // 删除连接
+    // Delete connection
     this.app.delete('/api/connections/:id', async (req, res) => {
       try {
         const connectionId = req.params.id;
@@ -135,7 +141,7 @@ class MQTTMonitor {
       }
     });
 
-    // 删除主题
+    // Delete topic
     // Update topic status (enable/disable)
     this.app.put('/api/topics/:id', async (req, res) => {
       try {
@@ -224,6 +230,37 @@ class MQTTMonitor {
       }
     });
 
+    // Add debug endpoint to check active WebSocket and MQTT connections
+    this.app.get('/api/debug/connections', async (req, res) => {
+      try {
+        const wsConnections = Array.from(this.wsClients.entries()).map(([wsId, info]) => ({
+          wsClientId: wsId,
+          connectedAt: info.connectedAt,
+          lastPong: info.lastPong,
+          mqttConnections: Array.from(info.mqttConnections),
+          wsState: info.ws.readyState === WebSocket.OPEN ? 'OPEN' : 
+                  info.ws.readyState === WebSocket.CLOSED ? 'CLOSED' : 
+                  info.ws.readyState === WebSocket.CONNECTING ? 'CONNECTING' : 'CLOSING'
+        }));
+
+        const mqttConnections = Array.from(this.mqttClients.entries()).map(([connId, client]) => ({
+          connectionId: connId,
+          connected: client.connected,
+          reconnecting: client.reconnecting
+        }));
+
+        res.json({
+          webSocketClients: wsConnections,
+          mqttClients: mqttConnections,
+          totalWsClients: this.wsClients.size,
+          totalMqttClients: this.mqttClients.size
+        });
+      } catch (error) {
+        console.error('Error getting debug connections info:', error);
+        res.status(500).json({ error: error.message });
+      }
+    });
+
     // Get basic statistics (without message count)
     this.app.get('/api/stats', async (req, res) => {
       try {
@@ -275,12 +312,23 @@ class MQTTMonitor {
 
   setupWebSocket() {
     this.wss.on('connection', (ws) => {
-      console.log('WebSocket client connected');
+      // Generate unique ID for this WebSocket client
+      const wsClientId = `ws_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      console.log(`WebSocket client connected: ${wsClientId}`);
       
-      // Send initial connection status
+      // Store WebSocket client with its associated MQTT connections
+      this.wsClients.set(wsClientId, {
+        ws: ws,
+        mqttConnections: new Set(),
+        connectedAt: new Date(),
+        lastPong: Date.now() // Track last heartbeat response
+      });
+      
+      // Send initial connection status with client ID
       ws.send(JSON.stringify({ 
         type: 'connectionStatus', 
         status: 'connected',
+        wsClientId: wsClientId,
         message: 'WebSocket connection established'
       }));
       
@@ -300,6 +348,30 @@ class MQTTMonitor {
             case 'ping':
               ws.send(JSON.stringify({ type: 'pong' }));
               break;
+            case 'pong':
+              // Client responded to our heartbeat
+              const clientInfo = this.wsClients.get(wsClientId);
+              if (clientInfo) {
+                clientInfo.lastPong = Date.now();
+                console.log(`💓 Received pong from client ${wsClientId}`);
+              }
+              break;
+            case 'register':
+              // Allow client to register with a specific ID
+              if (data.wsClientId && this.wsClients.has(data.wsClientId)) {
+                // Update existing client
+                const clientInfo = this.wsClients.get(data.wsClientId);
+                clientInfo.ws = ws;
+                this.wsClients.delete(wsClientId); // Remove auto-generated ID
+                console.log(`WebSocket client re-registered: ${data.wsClientId}`);
+              }
+              break;
+            case 'cleanup':
+              // Handle explicit cleanup request from client
+              const targetClientId = data.wsClientId || wsClientId;
+              console.log(`🧹 Received cleanup request for client: ${targetClientId}`);
+              this.handleWebSocketDisconnect(targetClientId);
+              break;
           }
         } catch (error) {
           console.error('WebSocket error:', error);
@@ -311,16 +383,18 @@ class MQTTMonitor {
       });
 
       ws.on('close', (code, reason) => {
-        console.log('WebSocket client disconnected:', code, reason.toString());
+        console.log(`WebSocket client disconnected: ${wsClientId}, code: ${code}, reason: ${reason.toString()}`);
+        this.handleWebSocketDisconnect(wsClientId);
       });
 
       ws.on('error', (error) => {
-        console.error('WebSocket client error:', error);
+        console.error(`WebSocket client error: ${wsClientId}:`, error);
+        this.handleWebSocketDisconnect(wsClientId);
       });
     });
   }
 
-  async connectMQTT(connection) {
+  async connectMQTT(connection, wsClientId = null) {
     const clientId = connection.client_id || `mqtt_monitor_${Date.now()}`;
     
     // Parse the connection URL to determine protocol
@@ -369,6 +443,13 @@ class MQTTMonitor {
     client.on('connect', () => {
       console.log(`Connected to MQTT broker: ${connection.host}:${connection.port}`);
       this.mqttClients.set(connection.id, client);
+      
+      // Associate MQTT connection with WebSocket client if provided
+      if (wsClientId && this.wsClients.has(wsClientId)) {
+        this.wsClients.get(wsClientId).mqttConnections.add(connection.id);
+        console.log(`Associated MQTT connection ${connection.id} with WebSocket client ${wsClientId}`);
+      }
+      
       this.broadcast({ type: 'connectionStatus', connectionId: connection.id, status: 'connected' });
       
       // Automatically subscribe to all active topics for this connection
@@ -400,6 +481,15 @@ class MQTTMonitor {
     client.on('close', () => {
       console.log(`MQTT connection closed: ${connection.name}`);
       this.mqttClients.delete(connection.id);
+      
+      // Remove association from all WebSocket clients
+      this.wsClients.forEach((clientInfo, wsId) => {
+        if (clientInfo.mqttConnections.has(connection.id)) {
+          clientInfo.mqttConnections.delete(connection.id);
+          console.log(`Removed MQTT connection ${connection.id} from WebSocket client ${wsId}`);
+        }
+      });
+      
       this.broadcast({ type: 'connectionStatus', connectionId: connection.id, status: 'disconnected' });
     });
 
@@ -531,9 +621,119 @@ class MQTTMonitor {
       }
     });
   }
+
+  handleWebSocketDisconnect(wsClientId) {
+    const clientInfo = this.wsClients.get(wsClientId);
+    if (clientInfo) {
+      console.log(`🧹 Cleaning up WebSocket client: ${wsClientId}`);
+      console.log(`📊 Client had ${clientInfo.mqttConnections.size} MQTT connections`);
+      
+      // Disconnect all MQTT connections associated with this WebSocket client
+      clientInfo.mqttConnections.forEach(connectionId => {
+        console.log(`🔌 Auto-disconnecting MQTT connection ${connectionId} due to WebSocket disconnect`);
+        this.disconnectMQTT(connectionId).catch(error => {
+          console.error(`Error auto-disconnecting MQTT connection ${connectionId}:`, error);
+        });
+      });
+      
+      // Remove client info
+      this.wsClients.delete(wsClientId);
+      console.log(`✅ WebSocket client ${wsClientId} cleaned up`);
+    }
+  }
+
+  // Method to gracefully shutdown all connections
+  setupGracefulShutdown() {
+    const cleanup = async (signal) => {
+      console.log(`\n🚫 Received ${signal}. Performing graceful shutdown...`);
+      
+      // Stop heartbeat
+      this.stopHeartbeat();
+      
+      // Disconnect all MQTT clients
+      console.log(`🔌 Disconnecting ${this.mqttClients.size} MQTT connections...`);
+      const disconnectPromises = Array.from(this.mqttClients.keys()).map(connectionId => 
+        this.disconnectMQTT(connectionId).catch(error => 
+          console.error(`Error disconnecting MQTT connection ${connectionId}:`, error)
+        )
+      );
+      
+      await Promise.allSettled(disconnectPromises);
+      
+      // Close WebSocket server
+      if (this.wss) {
+        console.log('🌐 Closing WebSocket server...');
+        this.wss.close(() => {
+          console.log('✅ WebSocket server closed');
+        });
+      }
+      
+      // Close HTTP server
+      if (this.server) {
+        console.log('🖥️ Closing HTTP server...');
+        this.server.close(() => {
+          console.log('✅ HTTP server closed');
+          process.exit(0);
+        });
+      }
+      
+      // Force exit after 10 seconds
+      setTimeout(() => {
+        console.log('⏰ Force exiting after timeout');
+        process.exit(1);
+      }, 10000);
+    };
+
+    // Handle different termination signals
+    process.on('SIGINT', () => cleanup('SIGINT'));
+    process.on('SIGTERM', () => cleanup('SIGTERM'));
+    process.on('SIGQUIT', () => cleanup('SIGQUIT'));
+    
+    // Handle uncaught exceptions
+    process.on('uncaughtException', (error) => {
+      console.error('💥 Uncaught Exception:', error);
+      cleanup('UNCAUGHT_EXCEPTION');
+    });
+    
+    process.on('unhandledRejection', (reason, promise) => {
+      console.error('💥 Unhandled Rejection at:', promise, 'reason:', reason);
+      cleanup('UNHANDLED_REJECTION');
+    });
+  }
+
+  startHeartbeat() {
+    // Send heartbeat to all WebSocket clients every 30 seconds
+    this.heartbeatInterval = setInterval(() => {
+      this.wsClients.forEach((clientInfo, wsClientId) => {
+        if (clientInfo.ws.readyState === WebSocket.OPEN) {
+          try {
+            clientInfo.ws.send(JSON.stringify({ 
+              type: 'ping', 
+              timestamp: Date.now() 
+            }));
+            console.log(`💓 Sent heartbeat to client ${wsClientId}`);
+          } catch (error) {
+            console.error(`Error sending heartbeat to ${wsClientId}:`, error);
+            this.handleWebSocketDisconnect(wsClientId);
+          }
+        } else {
+          console.log(`💔 Client ${wsClientId} has dead WebSocket connection`);
+          this.handleWebSocketDisconnect(wsClientId);
+        }
+      });
+    }, 30000); // 30 seconds
+  }
+
+  stopHeartbeat() {
+    if (this.heartbeatInterval) {
+      clearInterval(this.heartbeatInterval);
+      this.heartbeatInterval = null;
+      console.log('💔 Heartbeat stopped');
+    }
+  }
 }
 
-// 启动服务器
+// Start the server
 const monitor = new MQTTMonitor();
 monitor.start(3000);
 
