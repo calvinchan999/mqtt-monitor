@@ -573,8 +573,37 @@ body {
     }
 }
 
+/* Animation for new messages appearing at the top */
+@keyframes newMessageFromTop {
+    0% {
+        opacity: 0;
+        transform: translateY(-30px) scale(0.95);
+        background: linear-gradient(135deg, rgba(26, 188, 156, 0.8), rgba(22, 160, 133, 0.8));
+        border-left-color: #1abc9c;
+        box-shadow: 0 0 20px rgba(26, 188, 156, 0.5);
+    }
+    50% {
+        background: linear-gradient(135deg, rgba(135, 206, 235, 0.4), rgba(93, 173, 226, 0.4));
+        border-left-color: #1abc9c;
+        box-shadow: 0 0 15px rgba(26, 188, 156, 0.3);
+    }
+    100% {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+        background: linear-gradient(135deg, rgba(26, 188, 156, 0.2), rgba(22, 160, 133, 0.1));
+        border-left-color: #1abc9c;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    }
+}
+
 .message-item.new-message {
-    animation: newMessage 0.8s ease;
+    animation: newMessageFromTop 0.8s ease;
+    border-left-color: #1abc9c !important;
+}
+
+/* Alternative animation for messages inserted at top */
+.message-item.new-message-top {
+    animation: newMessageFromTop 0.6s cubic-bezier(0.34, 1.56, 0.64, 1);
     border-left-color: #1abc9c !important;
 }
 
@@ -704,6 +733,20 @@ body {
     backdrop-filter: blur(5px);
 }
 
+/* Messages Dialog Modal - Higher z-index */
+.messages-dialog-modal {
+    z-index: 1100;
+    background-color: rgba(0, 0, 0, 0.6);
+    backdrop-filter: blur(8px);
+}
+
+/* Message Detail Modal - Highest z-index to appear on top of messages dialog */
+#messageModal {
+    z-index: 1200;
+    background-color: rgba(0, 0, 0, 0.7);
+    backdrop-filter: blur(10px);
+}
+
 .modal-content {
     background-color: rgba(30, 30, 50, 0.95);
     margin: 5% auto;
@@ -716,6 +759,19 @@ body {
     border: 1px solid rgba(100, 150, 200, 0.3);
 }
 
+/* Enhanced modal content for message detail when opened from dialog */
+#messageModal .modal-content {
+    background-color: rgba(30, 30, 50, 0.98);
+    margin: 5% auto;
+    padding: 0;
+    border-radius: 15px;
+    width: 80%;
+    max-width: 600px;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.7);
+    animation: modalSlideInEnhanced 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+    border: 2px solid rgba(100, 150, 200, 0.4);
+}
+
 @keyframes modalSlideIn {
     from {
         opacity: 0;
@@ -724,6 +780,18 @@ body {
     to {
         opacity: 1;
         transform: translateY(0);
+    }
+}
+
+/* Enhanced animation for stacked modals */
+@keyframes modalSlideInEnhanced {
+    from {
+        opacity: 0;
+        transform: translateY(-50px) scale(0.9);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
     }
 }
 
@@ -1016,9 +1084,43 @@ body {
     background: rgba(25, 30, 45, 0.8);
     border: 1px solid rgba(100, 150, 200, 0.2);
     border-radius: 8px;
-    margin-bottom: 10px;
-    padding: 12px;
+    margin-bottom: 8px;
+    padding: 10px;
     transition: all 0.3s ease;
+    font-size: 0.85rem;
+}
+
+/* Enhanced styling for dialog message content */
+.dialog-messages-list .message-item .message-content pre {
+    font-size: 0.75rem;
+    line-height: 1.3;
+    max-height: 300px;
+    padding: 10px;
+}
+
+/* Compact message headers in dialog */
+.dialog-messages-list .message-item .message-header {
+    margin-bottom: 8px;
+}
+
+.dialog-messages-list .message-item .message-topic {
+    font-size: 0.9rem;
+}
+
+.dialog-messages-list .message-item .message-time {
+    font-size: 0.75rem;
+}
+
+/* Compact message meta in dialog */
+.dialog-messages-list .message-item .message-meta {
+    margin-top: 8px;
+    font-size: 0.75rem;
+}
+
+.dialog-messages-list .message-item .message-qos,
+.dialog-messages-list .message-item .message-retained {
+    font-size: 0.7rem;
+    padding: 2px 6px;
 }
 
 .dialog-messages-list .message-item:hover {
@@ -1035,7 +1137,23 @@ body {
 }
 
 .dialog-messages-list .message-item.new-message {
-    animation: slideInFromRight 0.5s ease-out;
+    animation: newMessageFromTop 0.5s ease-out;
+}
+
+/* Enhanced slide-in animation for dialog messages from top */
+@keyframes slideInFromTop {
+    0% {
+        opacity: 0;
+        transform: translateY(-25px) scale(0.98);
+    }
+    100% {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}
+
+.dialog-messages-list .message-item.new-message-top {
+    animation: slideInFromTop 0.4s ease-out;
 }
 
 /* Mobile responsiveness for dialog */
@@ -1079,6 +1197,28 @@ body {
     .close-dialog {
         font-size: 24px;
         margin-left: 10px;
+    }
+    
+    /* Mobile adjustments for dialog messages */
+    .dialog-messages-list .message-item {
+        padding: 8px;
+        margin-bottom: 6px;
+        font-size: 0.8rem;
+    }
+    
+    .dialog-messages-list .message-item .message-content pre {
+        font-size: 0.7rem;
+        line-height: 1.2;
+        max-height: 250px;
+        padding: 8px;
+    }
+    
+    .dialog-messages-list .message-item .message-topic {
+        font-size: 0.85rem;
+    }
+    
+    .dialog-messages-list .message-item .message-time {
+        font-size: 0.7rem;
     }
 }
 

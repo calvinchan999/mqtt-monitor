@@ -749,31 +749,33 @@ class MQTTMonitorApp {
         const messagesContainer = document.getElementById('messagesList').parentElement;
         
         // Check if user was scrolled to bottom before update
-        const wasScrolledToBottom = messagesContainer.scrollTop + messagesContainer.clientHeight >= messagesContainer.scrollHeight - 10;
+        const wasScrolledToBottom = messagesContainer.scrollTop >= messagesContainer.scrollHeight - messagesContainer.clientHeight - 10;
         
         // Only do full refresh if message count changed significantly or it's a filter operation
         const isNewMessage = messages.length > this.lastMessageCount;
         const isFilter = messages.length < this.messages.length;
         
         if (isFilter || !isNewMessage) {
-            // Full refresh for filtering - display oldest to newest (top to bottom)
+            // Full refresh for filtering - display messages in chronological order (oldest to newest)
             container.innerHTML = '';
-            messages.slice().reverse().forEach(message => {
+            messages.forEach(message => {
                 const messageElement = this.createMessageElement(message);
                 container.appendChild(messageElement);
             });
         } else {
-            // Incremental update for new messages - add at bottom
-            const newMessages = messages.slice(0, messages.length - this.lastMessageCount);
-            newMessages.reverse().forEach(message => {
+            // Incremental update for new messages - add new messages at the bottom
+            const newMessages = messages.slice(this.lastMessageCount);
+            newMessages.forEach((message, index) => {
                 const messageElement = this.createMessageElement(message);
                 messageElement.classList.add('new-message');
+                
+                // Append to the end of the container (bottom)
                 container.appendChild(messageElement);
                 
                 // Remove the new-message class after animation
                 setTimeout(() => {
                     messageElement.classList.remove('new-message');
-                }, 500);
+                }, 600);
             });
         }
         
@@ -903,9 +905,9 @@ class MQTTMonitorApp {
 
     addMessage(message) {
         console.log('➕ Adding message to local array:', message);
-        this.messages.unshift(message);
+        this.messages.push(message);
         if (this.messages.length > 1000) {
-            this.messages = this.messages.slice(0, 1000);
+            this.messages = this.messages.slice(-1000);
         }
         
         // Update topic message counts
@@ -961,7 +963,7 @@ class MQTTMonitorApp {
             btn.innerHTML = '<i class="fas fa-arrow-down"></i> Auto Scroll';
             btn.className = 'btn btn-success';
             
-            // Scroll to bottom immediately when enabled
+            // Scroll to bottom immediately when enabled (since newest messages are at bottom)
             const messagesContainer = document.getElementById('messagesList').parentElement;
             messagesContainer.scrollTop = messagesContainer.scrollHeight;
         } else {
@@ -1416,13 +1418,13 @@ class MQTTMonitorApp {
         // Clear and rebuild message list
         container.innerHTML = '';
         
-        // Display messages (oldest to newest, like main view)
-        filteredMessages.slice().reverse().forEach(message => {
+        // Display messages in chronological order (oldest to newest, same as main view)
+        filteredMessages.forEach(message => {
             const messageElement = this.createMessageElement(message);
             container.appendChild(messageElement);
         });
 
-        // Auto-scroll to bottom if enabled
+        // Auto-scroll to bottom if enabled (since newest messages are at bottom)
         if (this.autoScroll) {
             setTimeout(() => {
                 container.scrollTop = container.scrollHeight;
