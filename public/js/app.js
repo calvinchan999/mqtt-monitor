@@ -16,6 +16,7 @@ class MQTTMonitorApp {
         this.maxReconnectAttempts = 5;
         this.reconnectDelay = 5000;
         this.dialogOpen = false; // Track if messages dialog is open
+        this.topicExpansionState = true; // Track topic expansion state (true = expanded)
         this.init();
     }
 
@@ -1239,6 +1240,17 @@ class MQTTMonitorApp {
             });
         }
 
+        // Topic expansion toggle
+        const topicTagsHeader = document.getElementById('dialogTopicTagsHeader');
+        if (topicTagsHeader) {
+            topicTagsHeader.addEventListener('click', (e) => {
+                // Don't trigger expansion when clicking the Clear Filters button
+                if (!e.target.closest('#dialogClearFiltersBtn')) {
+                    this.toggleTopicExpansion();
+                }
+            });
+        }
+
         // Dialog controls
         const dialogPauseBtn = document.getElementById('dialogPauseBtn');
         if (dialogPauseBtn) {
@@ -1298,6 +1310,15 @@ class MQTTMonitorApp {
         if (dialog) {
             dialog.style.display = 'block';
             this.dialogOpen = true;
+            
+            // Restore topic expansion state from localStorage
+            const savedExpansionState = localStorage.getItem('topicExpansionState');
+            if (savedExpansionState !== null) {
+                this.topicExpansionState = savedExpansionState === 'true';
+            }
+            
+            // Apply expansion state to UI
+            this.applyTopicExpansionState();
             
             // Update dialog content
             this.updateDialogTopicTags();
@@ -1429,6 +1450,53 @@ class MQTTMonitorApp {
             setTimeout(() => {
                 container.scrollTop = container.scrollHeight;
             }, 100);
+        }
+    }
+
+    toggleTopicExpansion() {
+        this.topicExpansionState = !this.topicExpansionState;
+        
+        const container = document.getElementById('dialogTopicTagsContainer');
+        const expansionIcon = document.getElementById('topicExpansionIcon');
+        const topicTagsSection = document.querySelector('.dialog-topic-tags');
+        
+        if (container && expansionIcon && topicTagsSection) {
+            if (this.topicExpansionState) {
+                // Expand
+                container.classList.remove('collapsed');
+                expansionIcon.classList.add('expanded');
+                topicTagsSection.classList.remove('collapsed');
+                console.log('🔽 Topic tags expanded');
+            } else {
+                // Collapse
+                container.classList.add('collapsed');
+                expansionIcon.classList.remove('expanded');
+                topicTagsSection.classList.add('collapsed');
+                console.log('🔼 Topic tags collapsed');
+            }
+            
+            // Save expansion state to localStorage for persistence
+            localStorage.setItem('topicExpansionState', this.topicExpansionState);
+        }
+    }
+
+    applyTopicExpansionState() {
+        const container = document.getElementById('dialogTopicTagsContainer');
+        const expansionIcon = document.getElementById('topicExpansionIcon');
+        const topicTagsSection = document.querySelector('.dialog-topic-tags');
+        
+        if (container && expansionIcon && topicTagsSection) {
+            if (this.topicExpansionState) {
+                // Expanded state
+                container.classList.remove('collapsed');
+                expansionIcon.classList.add('expanded');
+                topicTagsSection.classList.remove('collapsed');
+            } else {
+                // Collapsed state
+                container.classList.add('collapsed');
+                expansionIcon.classList.remove('expanded');
+                topicTagsSection.classList.add('collapsed');
+            }
         }
     }
 

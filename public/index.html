@@ -219,8 +219,11 @@
             <div class="modal-body messages-dialog-body">
                 <!-- Active Topics Section -->
                 <div class="dialog-topic-tags">
-                    <div class="dialog-topic-tags-header">
-                        <span><i class="fas fa-tags"></i> Active Topics:</span>
+                    <div class="dialog-topic-tags-header" id="dialogTopicTagsHeader">
+                        <div>
+                            <i class="fas fa-tags"></i> Active Topics:
+                            <i class="fas fa-chevron-down expansion-icon expanded" id="topicExpansionIcon"></i>
+                        </div>
                         <button id="dialogClearFiltersBtn" class="btn btn-sm btn-secondary">Clear Filters</button>
                     </div>
                     <div class="dialog-topic-tags-container" id="dialogTopicTagsContainer">
